@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"log"
-	// "time"
 	"github.com/coder/websocket"
-
 )
 
 type Client struct {
@@ -25,7 +23,16 @@ func (c *Client) ReadLoop(ctx context.Context) {
 		if err != nil {
 			break
 		}
-		c.Hub.Broadcast <- msg
+
+		// Encrypt before broadcasting
+		encryptedMsg, err := Encrypt(string(msg))
+		if err != nil {
+			log.Println("encryption error:", err)
+			continue
+		}
+
+		// Broadcast encrypted message
+		c.Hub.Broadcast <- []byte(encryptedMsg)
 	}
 }
 
@@ -38,11 +45,18 @@ func (c *Client) WriteLoop(ctx context.Context) {
 			return
 		case msg, ok := <-c.Send:
 			if !ok {
-				// Channel closed
 				c.Conn.Close(websocket.StatusInternalError, "hub closed")
 				return
 			}
-			err := c.Conn.Write(ctx, websocket.MessageText, msg)
+
+			// Decrypt message before sending to client
+			decryptedMsg, err := Decrypt(string(msg))
+			if err != nil {
+				log.Println("decryption error:", err)
+				continue
+			}
+
+			err = c.Conn.Write(ctx, websocket.MessageText, []byte(decryptedMsg))
 			if err != nil {
 				log.Println("write error:", err)
 				return
